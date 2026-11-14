@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Giám sát bể nuôi thủy hải sản</title>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  body{font-family:Arial,sans-serif;max-width:900px;margin:20px auto;padding:0 10px}
+  .cards{display:flex;gap:12px;flex-wrap:wrap}
+  .card{flex:1;min-width:220px;border:1px solid #ccc;border-radius:8px;padding:12px;text-align:center}
+  .value{font-size:28px;font-weight:bold}
+  button{padding:10px 20px;margin:6px;font-size:16px;cursor:pointer}
+  #status{color:gray}
+</style>
+</head>
+<body>
+<h2>Giám sát môi trường bể nuôi thủy, hải sản</h2>
+<p id="status">Đang kết nối...</p>
+
+<div class="cards">
+  <div class="card">Mực nước (khoảng cách)<div class="value"><span class="level">--</span> m</div></div>
+  <div class="card">Nhiệt độ bể<div class="value"><span class="temp">--</span> °C</div></div>
+</div>
+
+<p>Máy bơm: <b><span class="pump">--</span>%</b> &nbsp;|&nbsp; Van thoát: <b><span class="valve">--</span></b></p>
+
+<h3>Điều khiển (manual)</h3>
+<button id="btnPump">Máy bơm vào: OFF</button>
+<button id="btnValve">Van thoát ra: OFF</button>
+
+<canvas id="chartLevel" height="90"></canvas>
+<canvas id="chartTemp" height="90"></canvas>
+
+<script>
+const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
+const T_DATA='aqua/231432217/data', T_PUMP='aqua/231432217/pump', T_VALVE='aqua/231432217/valve';
+
+function makeChart(id,label){
+  return new Chart(document.getElementById(id),{
+    type:'line',
+    data:{labels:[],datasets:[{label,data:[],tension:0.3}]},
+    options:{animation:false}
+  });
+}
+const cL = makeChart('chartLevel','Mực nước - khoảng cách (m)');
+const cT = makeChart('chartTemp','Nhiệt độ bể (°C)');
+
+function push(chart,val){
+  chart.data.labels.push(new Date().toLocaleTimeString());
+  chart.data.datasets[0].data.push(val);
+  if(chart.data.labels.length>20){chart.data.labels.shift();chart.data.datasets[0].data.shift();}
+  chart.update();
+}
+
+client.on('connect',()=>{
+  document.getElementById('status').textContent='Đã kết nối MQTT';
+  client.subscribe(T_DATA);
+});
+
+client.on('message',(topic,payload)=>{
+  if(topic===T_DATA){
+    const d=JSON.parse(payload.toString());
+    document.querySelector('.level').textContent=d.level;
+    document.querySelector('.temp').textContent=d.temp;
+    document.querySelector('.pump').textContent=d.pump;
+    document.querySelector('.valve').textContent=d.valve?'MỞ':'ĐÓNG';
+    push(cL,d.level); push(cT,d.temp);
+  }
+});
+
+let pump=false, valve=false;
+document.getElementById('btnPump').onclick=function(){
+  pump=!pump; client.publish(T_PUMP, pump?'ON':'OFF');
+  this.textContent='Máy bơm vào: '+(pump?'ON':'OFF');
+};
+document.getElementById('btnValve').onclick=function(){
+  valve=!valve; client.publish(T_VALVE, valve?'ON':'OFF');
+  this.textContent='Van thoát ra: '+(valve?'ON':'OFF');
+};
+</script>
+</body>
+</html>
